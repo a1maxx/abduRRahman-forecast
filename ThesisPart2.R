@@ -10,6 +10,8 @@ library(ggthemes)
 library(rminer)
 library(ggplot2)
 library(ggsci)
+## Trial 
+
 
  # split <- holdout(sogoods, 0.9)
  split2 <- holdout(sogoods,0.85)
