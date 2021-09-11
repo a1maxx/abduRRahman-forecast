@@ -8,7 +8,8 @@ library(ompr.roi)
 library(ompr)
 library(magrittr)
 library(Rglpk)
-
+library(cluster)
+library(reshape2)
 suppressPackageStartupMessages(library(dplyr))
 n <- 5
 t <- 10
@@ -72,8 +73,7 @@ get_solution(result,b[i,k])
 
 #### Scenario creation
 
-fw <- fitdist(rweibull(2000,shape=8,scale=3),"weibull")
-
+# fw <- fitdist(rweibull(2000,shape=8,scale=3),"weibull")
 
 mean <- 3
 sd <- 1
@@ -219,8 +219,9 @@ result <- MIPModel() %>%
   ## If line i-j selected to be the path to transfer electricity from i to j
   add_variable(r[i, j], 
                i = 1:n, j = 1:n, type = "binary") %>% 
-  
+  ## Amount of electricity supplied from main grid
   add_variable(b[i, k, l], i = 1:n, k = 1:t, l = 1:s, type = "continuous",lb=0) %>% 
+  
   
   # Line binding constraint
   add_constraint(x[i, j, k, l] <= r[i,j]* C[i,j],
@@ -231,25 +232,26 @@ result <- MIPModel() %>%
                  i = 1:n , k = 1:t, l = 1:s) %>% 
   
   # Balance constraint
-  add_constraint(sum_expr(x[i, j, k, l], j = 1:n, j!=i) <= b[i,k,l] + sum_expr(x[j, i, k, l], j = 1:n, j!=i ) + 
-                   g[i, k, l], 
-                 # + rgen(i, k, l) - demand(i, k, l), 
-                 i = 1:n, k = 1:t , l = 1:s) %>% 
+  add_constraint(sum_expr(x[i, j, k, l], j = 1:n, i!=j) <= b[i,k,l] + sum_expr(x[j, i, k, l], j = 1:n, i!=j) + 
+                   g[i, k, l] + rgen(i, k, l) - demand(i, k, l), i = 1:n, k = 1:t , l = 1:s) %>% 
   
   ## Path constraint
   # add_constraint(r[i,j] <= 1, i=1:n,j=1:n,i!=j)
-  
+ 
   ## Objective Function   
-  set_objective(sum_expr(RHO[l,1] * P[i,1] * g[i, k, l] + b[i, k, l], i = 1:n, k = 1:t, l=1:s),
+  set_objective(sum_expr(RHO[l,1] * (P[i,1] * g[i, k, l] + b[i, k, l]), i = 1:n, k = 1:t, l=1:s),
                 sense = "min") 
 
 
+result$constraints[[1]]
+result$constraints[[length(result$constraints)-440]]
 result$objective
+
 
 result <- result %>% 
   solve_model(with_ROI("glpk", verbose = TRUE))
 
-get_solution(result,x[i,j,k]) %>% filter(i==1,j==2)
+get_solution(result,x[i,j,k,l]) %>% filter(i==1,j==2)
 get_solution(result,r[i,j])
-get_solution(result,b[i,k])
+get_solution(result,b[i,k,l])
 
