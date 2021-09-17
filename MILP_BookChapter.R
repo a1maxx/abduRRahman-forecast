@@ -175,19 +175,21 @@ for(i in 2:10){
   sil_width[i] <- pam_fit$silinfo$avg.width
   
 }
+# 
+# plot(1:10, sil_width,
+#      xlab = "Number of clusters",
+#      ylab = "Silhouette Width")
+# lines(1:10, sil_width)
 
-plot(1:10, sil_width,
-     xlab = "Number of clusters",
-     ylab = "Silhouette Width")
-lines(1:10, sil_width)
-
+noc <- which(sil_width==min(sil_width,na.rm=T))
 
 pam_fit <- pam(mat.dist.scenarios,
                diss = TRUE,
-               k = 9)
+               k = noc)
 
 reducted.scenarios[as.numeric(pam_fit$medoids),]
 final.scenarios <- reducted.scenarios[pam_fit$id.med,] %>% mutate(prob = prob/sum(prob))
+
 
 
 
@@ -228,10 +230,9 @@ stocksm %>% spread(stock, price)
 
 
 
-
 RHO <- matrix(final.scenarios$prob,nrow = 9)
-PF <- matrix(sample(runif(100,0.6,1.4),10),nrow = 10) 
-PF2 <- matrix(sample(runif(100,0.8,1.2),10),nrow = 10) 
+PF <- matrix(sample(runif(100,0.9,1.1),step_size),nrow = step_size)  # Further Randomization of demand
+PF2 <- matrix(sample(runif(100,0.95,1.05),step_size),nrow = step_size) # Further Randomization of renewable generation
 
 demandSet <- 1:3
 ### Creates demand for bus i at time t in scenario S
@@ -298,7 +299,6 @@ remove("i","j","k")
 which(objs %in% ls(envir=.GlobalEnv))
 
 
-
 result <- MIPModel() %>% 
   # Amount of electricity transferred from i to j at time k
   add_variable(x[i, j, k], i = 1:n, j = 1:n, k = 1:t,  type = "continuous",lb = 0) %>% 
@@ -323,9 +323,6 @@ result <- MIPModel() %>%
   # Balance constraint
   add_constraint(sum_expr(x[i, j, k], j = 1:n, i!=j) <= b[i,k,l] + sum_expr(x[j, i, k], j = 1:n, i!=j) + 
                    g[i, k] + rgen(i, k, l) - demand(i, k, l), i = 1:n, k = 1:t , l = 1:s)
-  
-  
-
 
   # Objective Function   
   result <- result %>% 
@@ -335,7 +332,6 @@ result <- MIPModel() %>%
   result <- result %>% 
    solve_model(with_ROI("glpk", verbose = TRUE))
   
-  r
 
   result$constraints[[length(result$constraints)-440]]
 
@@ -357,6 +353,7 @@ df <- as.data.frame(matrix(ncol = 8 ))
 colnames(df) <- c("node","step","arrivals","departures","generation","demand","rgen","excessORdeficit")
 p <- 1
 y <- 1
+
 calculateB <- function(result){
   gg <- get_solution(result,g[i,k])
   xx <- get_solution(result,x[i,j,k])
@@ -390,7 +387,6 @@ result$objective_value
 
 
 
-
 sim <- function(dd,rg,result){
   astep <- max(get_solution(result,x[i,j,k])$k) 
   gg <- get_solution(result,g[i,k])
@@ -409,6 +405,7 @@ sim <- function(dd,rg,result){
   
 }
 
+### Functions ----
 solveOPT <- function(final.scenarios,step_size,PF,PF2){
   line_cap <- 7.5
   A <-  matrix(0,ncol=n,nrow=n) # if there is connection between i and j
@@ -455,6 +452,71 @@ solveOPT <- function(final.scenarios,step_size,PF,PF2){
 }
 
 fresult <- solveOPT(final.scenarios,10,PF,PF2)
+
+mean.est <- c(3,2.5,4)
+sd.est <- c(1,1.5,0.5)
+demandL = vector(mode="list",length = length(mean.est))
+for(i in 1:length(mean.est)){
+  demandL[[i]]$mean.est <- mean.est[1]
+  demandL[[i]]$sd.est <- sd.est[1]
+  
+}
+
+shape.est <- c(8,7,6.5)
+scale.est <- c(3.5,4,5)
+rgenL = vector(mode="list",length = length(shape.est))
+for(i in 1:length(mean.est)){
+  rgenL[[i]]$shape.est <- shape.est[1]
+  rgenL[[i]]$scale.est <- scale.est[1]
+  
+}
+
+
+createScenarios <- function(demandL,rgenL){
+  
+  scenarios <- data.frame(sn=0,load1=0,load2=0,load3=0,wspeed1=0,wpspeed2=0,prob=0)
+ 
+  for(i in 1:1000){
+    loads <- rnorm(3,mean = mean,sd = sd)
+    rweis <- rweibull(2,shape = shape,scale = scale)
+    
+    load.prob <- 1
+    for(j in 1:length(loads))
+      load.prob <- dnorm(loads[j],mean=mean.est,sd=sd.est) * load.prob
+    
+    rgen.prob <- 1
+    for(k in 1:length(rweis))
+      rgen.prob <- dweibull(rweis[k],shape = shape.est,scale=scale.est)*rgen.prob
+    
+    scenarios[i,] <- c(i,loads,rweis,rgen.prob*load.prob)
+    
+  }
+  reducted.scenarios <- scenarios %>% filter(prob>0.005) %>% arrange(desc(prob))
+  reducted.scenarios <- head(reducted.scenarios,200)
+  for(i in 2:10){
+    
+    pam_fit <- pam(mat.dist.scenarios,
+                   diss = TRUE,
+                   k = i)
+    
+    sil_width[i] <- pam_fit$silinfo$avg.width
+    
+  }
+
+  noc <- which(sil_width==min(sil_width,na.rm=T))
+  
+  pam_fit <- pam(mat.dist.scenarios,
+                 diss = TRUE,
+                 k = noc)
+  
+  reducted.scenarios[as.numeric(pam_fit$medoids),]
+  final.scenarios <- reducted.scenarios[pam_fit$id.med,] %>% mutate(prob = prob/sum(prob))
+  
+  
+  return(final.scenarios)
+  
+}
+
 
 
 
