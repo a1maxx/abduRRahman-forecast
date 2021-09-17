@@ -175,7 +175,7 @@ for(i in 2:10){
   sil_width[i] <- pam_fit$silinfo$avg.width
   
 }
-# 
+
 # plot(1:10, sil_width,
 #      xlab = "Number of clusters",
 #      ylab = "Silhouette Width")
@@ -189,6 +189,7 @@ pam_fit <- pam(mat.dist.scenarios,
 
 reducted.scenarios[as.numeric(pam_fit$medoids),]
 final.scenarios <- reducted.scenarios[pam_fit$id.med,] %>% mutate(prob = prob/sum(prob))
+
 
 
 
@@ -451,10 +452,15 @@ solveOPT <- function(final.scenarios,step_size,PF,PF2){
     return(result)
 }
 
+
+
+
 fresult <- solveOPT(final.scenarios,10,PF,PF2)
 
 mean.est <- c(3,2.5,4)
 sd.est <- c(1,1.5,0.5)
+
+
 demandL = vector(mode="list",length = length(mean.est))
 for(i in 1:length(mean.est)){
   demandL[[i]]$mean.est <- mean.est[1]
@@ -464,6 +470,7 @@ for(i in 1:length(mean.est)){
 
 shape.est <- c(8,7,6.5)
 scale.est <- c(3.5,4,5)
+
 rgenL = vector(mode="list",length = length(shape.est))
 for(i in 1:length(mean.est)){
   rgenL[[i]]$shape.est <- shape.est[1]
@@ -472,25 +479,45 @@ for(i in 1:length(mean.est)){
 }
 
 
-createScenarios <- function(demandL,rgenL){
-  
-  scenarios <- data.frame(sn=0,load1=0,load2=0,load3=0,wspeed1=0,wpspeed2=0,prob=0)
+generateScenarios <- function(demandL,rgenL){
  
-  for(i in 1:1000){
-    loads <- rnorm(3,mean = mean,sd = sd)
-    rweis <- rweibull(2,shape = shape,scale = scale)
+  scenarios <- data.frame(sn=0,load1=0,load2=0,load3=0,wspeed1=0,wpspeed2=0,prob=0)
+  
+  for (i in 1:1000) {
+    
+    loads <- c()
+    rweis <- c()
+    
+    for (j in 1:length(demandL))
+      loads <- append(loads, rnorm(1, mean = demandL[[i]]$mean.est, sd = demandL[[i]]$sd.est))
+    
+    
+    for (k in 1:length(rgenL)) 
+      rweis <- append(rweis,rweibull(1, shape = rgenL[[k]]$shape.est , scale = rgenL[[k]]$scale.est))
+    
     
     load.prob <- 1
-    for(j in 1:length(loads))
-      load.prob <- dnorm(loads[j],mean=mean.est,sd=sd.est) * load.prob
+    
+    for (r in 1:length(loads))
+      load.prob <- dnorm(loads[r], mean = demandL[[r]]$mean.est, sd = demandL[[r]]$sd.est) * load.prob
+    
     
     rgen.prob <- 1
-    for(k in 1:length(rweis))
-      rgen.prob <- dweibull(rweis[k],shape = shape.est,scale=scale.est)*rgen.prob
     
-    scenarios[i,] <- c(i,loads,rweis,rgen.prob*load.prob)
+    for (p in 1:length(rweis))
+      rgen.prob <- dweibull(rweis[p], shape = rgenL[[p]]$shape.est, scale = rgenL[[p]]$scale.est) * rgen.prob
+    
+    scenarios[i, ] <- c(i, loads, rweis, rgen.prob * load.prob)
     
   }
+  
+}
+
+
+
+reduceScenarios <- function(scenarios){
+  
+
   reducted.scenarios <- scenarios %>% filter(prob>0.005) %>% arrange(desc(prob))
   reducted.scenarios <- head(reducted.scenarios,200)
   for(i in 2:10){
@@ -516,6 +543,7 @@ createScenarios <- function(demandL,rgenL){
   return(final.scenarios)
   
 }
+
 
 
 
