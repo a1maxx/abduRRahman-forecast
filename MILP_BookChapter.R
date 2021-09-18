@@ -151,18 +151,13 @@ for(i in 1:1000){
 
 # ggplot(scenarios %>% filter(prob>0.005)) + geom_point(aes(x=sn,y=prob/max(prob)))
 
-nrow(scenarios)
 reducted.scenarios <- scenarios %>% filter(prob>0.005) %>% arrange(desc(prob))
 reducted.scenarios <- head(reducted.scenarios,200)
-nrow(reducted.scenarios)
+# threshold <- mean(as.matrix(dist.scenarios))/2
+
 
 dist.scenarios <- daisy(reducted.scenarios,"euclidean")
 mat.dist.scenarios <- as.matrix(dist.scenarios)
-df.dist.scenarios <- as.data.frame(mat.dist.scenarios)
-melted.df <- melt(df.dist.scenarios)
-melted.df <- melted.df %>% arrange(desc(value))
-tail(melted.df)
-threshold <- mean(as.matrix(dist.scenarios))/2
 
 
 sil_width <- c(NA)

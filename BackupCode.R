@@ -52,3 +52,9 @@ result$objective_value
 
 
 get_solution(result,r[i,j]) %>% filter(value>0)
+
+
+
+df.dist.scenarios <- as.data.frame(mat.dist.scenarios)
+melted.df <- melt(df.dist.scenarios)
+melted.df <- melted.df %>% arrange(desc(value))
