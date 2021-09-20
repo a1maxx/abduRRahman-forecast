@@ -14,6 +14,8 @@ a <- matrix(c(0,1,1,
 
 set.seed(1)
 
+
+print("git check")
 weights <- matrix(rpois(n * n, 5), ncol = n, nrow = n)
 demand  <- c(rnorm(n,0,1))
 demand  <- matrix(sapply(demand,function(x) ifelse(x<0,0,x)),nrow=1)
