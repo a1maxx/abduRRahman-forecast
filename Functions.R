@@ -8,42 +8,56 @@ load3 <- rnorm(250,4,0.5)
 load1 <- ifelse(load1<0,0,load1)
 load2 <- ifelse(load2<0,0,load2)
 load3 <- ifelse(load3<0,0,load3)
-
 wspeed1 <- rweibull(250,shape= 8,scale=3.5) 
 wspeed2 <- rweibull(250,shape= 7,scale=4)
-df <- data.frame(load1,load2,load3,wspeed1,wspeed2)
+demandSet <- 1:3
+rgenSet <- 4:5
 
 
+actual.params <- list()
+ms <-  c(3,2,4)
+sds <- c(1,1.5,0.5)
+shapes <- c(8,7)
+scales <- c(3.5,4)
+## Changes actual parameter estimations to be used in the simulation
+assignActualParams(ms,sds,shapes,scales)
 
 
+init.df <- data.frame(load1,load2,load3,wspeed1,wspeed2)
+
+init.ests <- generateEstimates(init.df)
 rgenL <-  list()
 demandL <- list()
-
-
-m <- generateEstimates(df)
-
-
-
-assignEstimates(m)
-
-upd.m <-  updateEstimates(archival,new)
-
-assignEstimates(upd.m)
+assignEstimates(init.est)
 scenarios <- generateScenarios(demandL,rgenL)
 reduced.scenes <- reduceScenarios(scenarios)
-result <- solveOPT(final.scenarios = reduced.scenes,step_size = 10)
+result <- solveOPT(reduced.scenes,step_size = 10)
+
+result.df <- calculateB(result)
+
+result$objective_value
+agg.df <-
+  result.df %>% group_by(step) %>% dplyr::summarise(
+    utilityCostbyStep = sum(utilityCost),
+    generationCostbyStep = sum(genCost),
+    totalSum = sum(utilityCostbyStep, generationCostbyStep)
+  ) 
+
+
+sum(agg.df$totalSum)
+
+upd.m <-  updateEstimates(archival,new)
+assignEstimates(upd.m)
 
 
 
-## Scenario Reduction Function  ----
-
-assign(paste("load",1,sep = ""),rnorm(1,2,1))
+## Scenario Reduction Function----
 
 d <- 3
 r <- 2
 
-createData <-  function(l,d,r){
-  
+createDatawithSampleParamEst <-  function(l,d,r){
+
   dl <- l[1:d]  
   rl <- l[(d+1):(d+r)]
   dl.names <- paste("load",1:length(dl),sep="")
@@ -65,8 +79,6 @@ createData <-  function(l,d,r){
   
   
 }
-
-
 
 generateEstimates <- function(df){
   loads <- colnames(df)[which(grepl("load",colnames(df)))]
@@ -91,8 +103,6 @@ generateEstimates <- function(df){
   
 }
 
-
-
 assignEstimates <-function(m){
   mean.est <- sapply(m[1:3],function(x) x$mean.est)
   sd.est <- sapply(m[1:3],function(x) x$sd.est)
@@ -109,11 +119,6 @@ updateEstimates <- function(archival,new){
   return(upd.m)
 }
 
-
-
-
-
-
 mean.est <- sapply(m[1:3],function(x) x$mean.est)
 sd.est <- sapply(m[1:3],function(x) x$sd.est)
 demandL <-  m[1:length(mean.est)]
@@ -122,10 +127,9 @@ shape.est <- sapply(m[(length(mean.est)+1):length(m)],function(x) x$shape.est)
 scale.est <- sapply(m[(length(mean.est)+1):length(m)],function(x) x$scale.est)
 rgenL <- m[(length(mean.est)+1):length(m)]
 
-
 generateScenarios <- function(demandL,rgenL){
   
-  scenarios <- data.frame(sn=0,load1=0,load2=0,load3=0,wspeed1=0,wpspeed2=0,prob=0)
+  scenarios <- data.frame(sn=0,load1=0,load2=0,load3=0,wspeed1=0,wspeed2=0,prob=0)
   
   for (i in 1:1000) {
     
@@ -133,30 +137,31 @@ generateScenarios <- function(demandL,rgenL){
     rweis <- c()
     
     for (j in 1:length(demandL))
-      loads <- append(loads, rnorm(1, mean = demandL[[j]]$mean.est, sd = demandL[[j]]$sd.est))
+      loads <- append(loads, rnorm(1, mean = as.numeric(demandL[[1]][1]), sd = as.numeric(demandL[[j]][2])))
     
     
     for (k in 1:length(rgenL)) 
-      rweis <- append(rweis,rweibull(1, shape = rgenL[[k]]$shape.est , scale = rgenL[[k]]$scale.est))
+      rweis <- append(rweis,rweibull(1, shape = as.numeric(rgenL[[k]][1]) , scale = as.numeric(rgenL[[k]][2])))
     
     
     load.prob <- 1
     
     for (r in 1:length(loads))
-      load.prob <- dnorm(loads[r], mean = demandL[[r]]$mean.est, sd = demandL[[r]]$sd.est) * load.prob
+      load.prob <- dnorm(loads[r], mean = as.numeric(demandL[[r]][1]), sd = as.numeric(demandL[[r]][2])) * load.prob
     
     
     rgen.prob <- 1
     
     for (p in 1:length(rweis))
-      rgen.prob <- dweibull(rweis[p], shape = rgenL[[p]]$shape.est, scale = rgenL[[p]]$scale.est) * rgen.prob
+      rgen.prob <- dweibull(rweis[p], shape = as.numeric(rgenL[[p]][1]), scale = as.numeric(rgenL[[p]][2])) * rgen.prob
     
     scenarios[i, ] <- c(i, loads, rweis, rgen.prob * load.prob)
     
   }
+  
+  
   return(scenarios)
 }
-
 
 reduceScenarios <- function(scenarios){
   reducted.scenarios <- scenarios %>% filter(prob>0.005) %>% arrange(desc(prob))
@@ -189,10 +194,49 @@ reduceScenarios <- function(scenarios){
   return(final.scenarios)
   
 }
+
+
 step_size <- 10
 final.scenarios <- reduced.scenes
 #### Optimization Function
 solveOPT <- function(final.scenarios,step_size){
+  browser()
+  rgen <- function(i, t, s, PF2) {
+    vin <- 3.5
+    vr <-  14.5
+    vout <- 20
+    pw <- 5
+    rgenSet <- 4:5
+    if (i %in% rgenSet) {
+      d <-
+        as.matrix(final.scenarios[s,] %>%  dplyr::select(wspeed1, wspeed2),
+                  ncol = 2)
+      mm <- t(PF2 %*% d)
+      ws <- as.numeric(mm[i %% 4 + 1, t])
+      if (ws < vin  || ws > vout)
+        return(0)
+      else if (ws >= vin && ws <= vout)
+        return((pw * (ws - vin)) / (vr - vin))
+      else
+        return(pw)
+      
+    } else
+      return(0)
+  }
+  
+  dgen <- function(i, t, s, PF) {
+    demandSet <- 1:3
+    if (i %in% demandSet) {
+      d <-
+        as.matrix(final.scenarios[s, ] %>%  dplyr::select(load1, load2, load3),
+                  ncol = 3)
+      mm <- t(PF %*% d)
+      return(as.numeric(mm[i, t]))
+    } else
+      0
+    
+  }
+  
   n <- 5
   t <- 10
   s <- nrow(final.scenarios)
@@ -202,7 +246,7 @@ solveOPT <- function(final.scenarios,step_size){
   A[upper.tri(A)] = t(A)[upper.tri(A)]
   C <-  matrix(sapply(diag(n),function(x)ifelse(x==1,0,line_cap)),ncol = n) # Capacity of line i-j 
   G <-  matrix(c(40,0,0,0,20),ncol=5) # Generation capacity of bus i
-  P <-  matrix(c(4,6,3,5,8),nrow=n,ncol=1) # Price of generating unit of electricity in bus i
+  P <-  matrix(c(4,0,0,0,8),nrow=n,ncol=1) # Price of generating unit of electricity in bus i
   RHO <- matrix(final.scenarios$prob,nrow = nrow(final.scenarios)) # Scenario Probabilities
   PF <- matrix(sample(runif(100,0.9,1.1),step_size),nrow = step_size)  # Further Randomization of demand
   PF2 <- matrix(sample(runif(100,0.95,1.05),step_size),nrow = step_size) # Further Randomization of renewable generation
@@ -225,7 +269,7 @@ solveOPT <- function(final.scenarios,step_size){
     
     # Generation capacity constraint 
     add_constraint(g[i, k] <= G[1,i], 
-                   i = 1:n , k = 1:t) %>%   
+                   i = 1:n , k = 1:t) %>% 
     
     # Balance constraint
     add_constraint(sum_expr(x[i, j, k], j = 1:n, i!=j) <= b[i,k,l] + sum_expr(x[j, i, k], j = 1:n, i!=j) + 
@@ -239,7 +283,7 @@ solveOPT <- function(final.scenarios,step_size){
       set_objective(sum_expr(RHO[l,1] * (P[i,1] * g[i, k] + 100*b[i, k, l]), i = 1:n, k = 1:t, l=1:s),
                     sense = "min") 
   
-
+    browser()
     result$constraints[[length(result$constraints)-200]]
     
     result <- result %>% 
@@ -249,64 +293,62 @@ solveOPT <- function(final.scenarios,step_size){
 }
 
 
-rgen(5,10,2,PF2)
-
 ### Simulation Functions
 
+
 calculateB <- function(result){
+  df <- as.data.frame(matrix(ncol = 9))
+  colnames(df) <- c("node","step","arrivals","departures","generation","demand","rgen","excessORdeficit","utilityCost")
   gg <- get_solution(result,g[i,k])
   xx <- get_solution(result,x[i,j,k])
-  
   N <- max(get_solution(result,x[i,j,k])$i)
   P <-  max(get_solution(result,x[i,j,k])$k)
+  prices <- matrix(c(4,0,0,0,8),nrow=n,ncol=1) 
   for (p in 1:P) {
     for (y in 1:N) {
-      arrivals <- sum(xx %>% filter(j == y, k == p) %>% select(value))
-      departures <- sum(xx %>% filter(i == y, k == p) %>% select(value))
-      generation <- as.numeric(gg %>% filter(i==y,k==p) %>% select(value))
-      dd <- rnorm(1,3,1)
-      rr <- rweibull(1,shape=8,scale=3)
+      arrivals <- sum(xx %>% filter(j == y, k == p) %>% dplyr::select(value))
+      departures <- sum(xx %>% filter(i == y, k == p) %>% dplyr::select(value))
+      generation <- as.numeric(gg %>% filter(i==y,k==p) %>% dplyr::select(value))
+      
+      dd <-ifelse(y %in% demandSet,
+          rnorm(1, actual.params[[y]]$mean, actual.params[[y]]$sd) * runif(1, 0.9, 1.1),0)
+      
+      rr <- ifelse(y %in% rgenSet,
+          rweibull(1, actual.params[[y]]$shape, actual.params[[y]]$scale) * runif(100, 0.95, 1.05),0) 
+      
       bb <- arrivals + generation + rr - dd - departures
-      asb <- ifelse()
-      df <-  rbind(df,c(y,p,arrivals,departures,generation,dd,rr,bb))
+      asb <- ifelse(bb>0,0,-bb*100)
+      df <-  rbind(df,c(y,p,arrivals,departures,generation,dd,rr,bb,asb))
       
     }
     
   }
+ 
+  df <- df %>% mutate(genCost = generation * prices[node,] )
   return(df[-1,])
 }
 
-rgen <- function(i, t, s,PF2) {
-  vin <- 3.5
-  vr <-  14.5
-  vout <- 20
-  pw <- 5
-  rgenSet <- 4:5
-  if (i %in% rgenSet) {
-    d <-
-      as.matrix(final.scenarios[s, ] %>%  dplyr::select(wspeed1, wpspeed2),
-                ncol = 2)
-    mm <- t(PF2 %*% d)
-    ws <- as.numeric(mm[i %% 4 + 1, t])
-    if (ws < vin  || ws > vout)
-      return(0)
-    else if (ws >= vin && ws <= vout)
-      return((pw * (ws - vin)) / (vr - vin))
-    else
-      return(pw)
+
+
+assignActualParams <- function(means, sds,shapes,scales){
+  nofD <- length(means)
+  demand.mean.actual <- means
+  demand.sd.actual <- sds
+  demand.actual.params <- vector(mode="list",length=nofD)
+  for(i in 1:nofD) {
+    demand.actual.params[[i]]$mean <- demand.mean.actual[i]
+    demand.actual.params[[i]]$sd <- demand.sd.actual[i]
     
-  } else
-    return(0)
-}
-
-dgen <- function(i,t,s,PF){
-  demandSet <- 1:3
-  if(i %in% demandSet){
-    d <- as.matrix(final.scenarios[s,] %>%  dplyr::select(load1,load2,load3),ncol=3)
-    mm <- t(PF %*% d)
-    return(as.numeric(mm[i,t]))
-  }else
-    0
+  }
+  nofR <- length(shapes)
+  rgen.shape.actual <- shapes
+  rgen.scale.actual <- scales
+  rgen.actual.params <- vector(mode="list",length=nofR)
+  for( i in 1:nofR){
+    rgen.actual.params[[i]]$shape <- rgen.shape.actual[i]
+    rgen.actual.params[[i]]$scale <- rgen.scale.actual[i]
+    
+  }
   
+  actual.params <<- append(demand.actual.params,rgen.actual.params)
 }
-

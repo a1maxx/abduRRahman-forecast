@@ -110,10 +110,6 @@ t.col <- rgb(rgb.val[1], rgb.val[2], rgb.val[3],
              names = name)
 
 
-hist(rweibull(2000,shape=fw$estimate[1],scale=fw$estimate[2]),col = t.col)
-hist(rweibull(2000,shape=fw1$estimate[1],scale=fw1$estimate[2]),col="red",add=T,alpha=0.5)
-hist(rweibull(2000,shape=fw2$estimate[1],scale=fw2$estimate[2]),col="blue",add=T,alpha=0.5)
-
 
 
 mean <- 3

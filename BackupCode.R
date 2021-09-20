@@ -58,3 +58,45 @@ get_solution(result,r[i,j]) %>% filter(value>0)
 df.dist.scenarios <- as.data.frame(mat.dist.scenarios)
 melted.df <- melt(df.dist.scenarios)
 melted.df <- melted.df %>% arrange(desc(value))
+
+
+
+
+backwardsPrime <- function(start, stop) {
+  is.prime <- function(x) {
+    flag <- T
+    if (x == 2) {
+      return(T)
+    }else if(x==1){
+      return(F)
+    } 
+    else{
+      sqrt.x <- sqrt(x)
+      f.sqrt.x <- floor(sqrt.x)
+      for (i in 2:f.sqrt.x) {
+        if (x %% i == 0)
+          return(F)
+      }
+      return(flag)
+    }
+  }
+  revert.num <- function(x){
+    cs <- unlist(strsplit(as.character(x),""))
+    rs <- c()
+    if(length(cs)<2){
+      return(4)
+    }
+    for(i in length(cs):1){
+      rs <- append(rs,cs[i])
+    }
+    return(as.numeric(paste(rs,collapse="")))
+  }
+  
+  bpS <- c()
+  for(i in start:stop){
+    if(is.prime(i) && is.prime(revert.num(i)) && i !=revert.num(i)){
+      bpS <- append(bpS,i)
+    }   
+  } 
+  return(bpS)
+}
