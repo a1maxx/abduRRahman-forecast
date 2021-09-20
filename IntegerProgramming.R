@@ -5,7 +5,7 @@ library(ompr)
 library(magrittr)
 library(Rglpk)
 library(dplyr)
-
+#
 n <- 5
 t <- 10
 a <- matrix(c(0,1,1,
