@@ -100,3 +100,12 @@ backwardsPrime <- function(start, stop) {
   } 
   return(bpS)
 }
+
+
+mean.est <- sapply(m[1:3],function(x) x$mean.est)
+sd.est <- sapply(m[1:3],function(x) x$sd.est)
+demandL <-  m[1:length(mean.est)]
+
+shape.est <- sapply(m[(length(mean.est)+1):length(m)],function(x) x$shape.est)
+scale.est <- sapply(m[(length(mean.est)+1):length(m)],function(x) x$scale.est)
+rgenL <- m[(length(mean.est)+1):length(m)]
