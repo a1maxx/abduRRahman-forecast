@@ -16,7 +16,7 @@ step_size <- 1
 
 
 actual.params <- list()
-ms <-  c(3,2,4)
+ms <-  c(3,2,4)+1
 sds <- c(1,1.5,0.5)
 shapes <- c(8,7)
 scales <- c(3.5,4)
@@ -26,43 +26,42 @@ init.df <- data.frame(load1,load2,load3,wspeed1,wspeed2)
 
 demandL <- list()
 rgenL <-  list()
-maxIter <- 5
+maxIter <- 50
 
 for(iter in 1:maxIter){
   
-  ms <- ms * runif(1,1,1.5)
-  sds <- sds * runif(1,1,1.5)
-  shapes <- shapes * runif(1,1,1.5)
-  scales <- scales * runif(1,1,1.5)
-  assignActualParams(ms,sds,shapes,scales)
+  ms.n <- ms * runif(1,1,1.5)
+  sds.n <- sds * runif(1,1,1.5)
+  shapes.n <- shapes * runif(1,0.8,1.2)
+  scales.n <- scales * runif(1,0.8,1.2)
+  assignActualParams(ms.n,sds.n,shapes.n,scales.n)
   
   r.df <- createRealTimeData(ms,sds,shapes,scales,1000)
+  r.df.bs <- do.call("rbind", replicate(2, r.df, simplify = FALSE))
   
-  upd.est <- updatedEstimates(init.df,r.df)
+  upd.est <- updatedEstimates(init.df,r.df.bs)
   
   assignEstimates(upd.est)
   scenarios <- generateScenarios(demandL,rgenL)
+  
   reduced.scenes <- reduceScenarios(scenarios)
-  result <- solveOPT2(reduced.scenes,step_size = 1)
+  result <- solveOPT3(reduced.scenes,step_size = 1)
   
   result.df <- calculateB(result)
+  result.df2 <- furtherSimulate(result.df, result = result)
   
-  result.df
-  
-  
-  get_solution(result,r[i,j]) %>% dplyr::filter(value>0)
-  
-  result$objective_value
-  agg.df <-
-    result.df %>% group_by(step) %>% dplyr::summarise(
-      utilityCostbyStep = sum(utilityCost),
-      generationCostbyStep = sum(genCost),
-      totalSum = sum(utilityCostbyStep, generationCostbyStep)
-    ) 
+  # agg.df <-
+  #   result.df %>% group_by(step) %>% dplyr::summarise(
+  #     utilityCostbyStep = sum(utilityCost),
+  #     generationCostbyStep = sum(genCost),
+  #     totalSum = sum(utilityCostbyStep, generationCostbyStep)
+  #   ) 
+  # 
   print(result$objective_value)
-  print(sum(agg.df$totalSum))
+  print(sum(result.df2$cost))
   
   
 }
+n <- 5
 
 
