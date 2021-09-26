@@ -1,18 +1,8 @@
-
+# 
 rm(list = setdiff(ls(), lsf.str()))
 gc()
 
-load1 <- rnorm(250,3,1)
-load2 <- rnorm(250,2.5,1.5)
-load3 <- rnorm(250,4,0.5)
-load1 <- ifelse(load1<0,0,load1)
-load2 <- ifelse(load2<0,0,load2)
-load3 <- ifelse(load3<0,0,load3)
-wspeed1 <- rweibull(250,shape= 8,scale=3.5) 
-wspeed2 <- rweibull(250,shape= 7,scale=4)
-demandSet <- 1:3
-rgenSet <- 4:5
-step_size <- 1
+
 
 
 actual.params <- list()
@@ -21,47 +11,64 @@ sds <- c(1,1.5,0.5)
 shapes <- c(8,7)
 scales <- c(3.5,4)
 assignActualParams(ms,sds,shapes,scales)
+
+nn <- 5
+load1 <- rnorm(250,ms[1],sds[1])
+load2 <- rnorm(250,ms[2],sds[2])
+load3 <- rnorm(250,ms[3],sds[3])
+wspeed1 <- rweibull(250,shape= shapes[1],scale=scales[1]) 
+wspeed2 <- rweibull(250,shape= shapes[1],scale=scales[2])
 init.df <- data.frame(load1,load2,load3,wspeed1,wspeed2)
 
+demandSet <- 1:3
+rgenSet <- 4:5
+step_size <- 1
 
-demandL <- list()
-rgenL <-  list()
-maxIter <- 50
 
-for(iter in 1:maxIter){
+
+
+maxIter <- 10
+f.result.final <-  as.data.frame(matrix(ncol = 3))
+colnames(f.result.final) <- c("optimization","simulation","lat")
+lats <-  c(seq(1000,50,-250))
+
+for(lat in lats){
   
-  ms.n <- ms * runif(1,1,1.5)
-  sds.n <- sds * runif(1,1,1.5)
-  shapes.n <- shapes * runif(1,0.8,1.2)
-  scales.n <- scales * runif(1,0.8,1.2)
-  assignActualParams(ms.n,sds.n,shapes.n,scales.n)
+  demandL <- list()
+  rgenL <-  list()
+  f.result <- as.data.frame(matrix(0,ncol=3))
+  colnames(f.result) <- c("optimization","simulation","lat")
   
-  r.df <- createRealTimeData(ms,sds,shapes,scales,1000)
-  r.df.bs <- do.call("rbind", replicate(2, r.df, simplify = FALSE))
+  for(iter in 1:maxIter){
+    
+    ms.n <- ms * runif(1,1,1.35)
+    sds.n <- sds * runif(1,1,1.35)
+    shapes.n <- shapes * runif(1,0.95,1.05)
+    scales.n <- scales * runif(1,0.95,1.05)
+    assignActualParams(ms.n,sds.n,shapes.n,scales.n)
+    
+    r.df <- createRealTimeData(means = ms.n,sds = sds.n,
+                               shapes = shapes.n, scales = scales.n,
+                               lat)
+    
+    # r.df.bs <- do.call("rbind", replicate(2, r.df, simplify = FALSE))
+    
+    upd.est <- updatedEstimates2(r.df)
+    assignEstimates(upd.est)
+    
+    scenarios <- generateScenarios(demandL,rgenL) 
+    reduced.scenes <- reduceScenarios(scenarios)
+    
+    result <- solveOPT3(reduced.scenes,step_size = 1)
+    result.df <- calculateB(result)
+    result.df2 <- furtherSimulate(result.df, result = result)
+    
+    
+    f.result[iter,] <- c(result$objective_value,sum(result.df2$cost),lat)
+     
+  }
   
-  upd.est <- updatedEstimates(init.df,r.df.bs)
-  
-  assignEstimates(upd.est)
-  scenarios <- generateScenarios(demandL,rgenL)
-  
-  reduced.scenes <- reduceScenarios(scenarios)
-  result <- solveOPT3(reduced.scenes,step_size = 1)
-  
-  result.df <- calculateB(result)
-  result.df2 <- furtherSimulate(result.df, result = result)
-  
-  # agg.df <-
-  #   result.df %>% group_by(step) %>% dplyr::summarise(
-  #     utilityCostbyStep = sum(utilityCost),
-  #     generationCostbyStep = sum(genCost),
-  #     totalSum = sum(utilityCostbyStep, generationCostbyStep)
-  #   ) 
-  # 
-  print(result$objective_value)
-  print(sum(result.df2$cost))
-  
-  
+  f.result.final <- rbind(f.result.final,f.result)
 }
-n <- 5
 
 
