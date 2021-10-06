@@ -3,7 +3,7 @@
 
 Rstudio Github setup check!
 
-
+[formula](https://render.githubusercontent.com/render/math?math=\large\f(x)=sin(x))
 ``` library(ompr) ```
 ```{=latex}
 \begin{equation}
