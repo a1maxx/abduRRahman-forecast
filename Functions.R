@@ -1,6 +1,6 @@
-rm(list = ls())
-gc()
-rm(list = setdiff(ls(), lsf.str()))
+# rm(list = ls())
+# gc()
+# rm(list = setdiff(ls(), lsf.str()))
 
 
 library(inflection)
@@ -122,7 +122,16 @@ generateEstimates <- function(df){
 
 updatedEstimates2 <- function(new){
   
+  
   upd.m <- generateEstimates(new)
+   
+  return(upd.m)
+}
+
+updatedEstimates <- function(archival,new){
+  
+  
+  upd.m <- generateEstimates(rbind(archival,new))
   
   return(upd.m)
 }
@@ -143,7 +152,6 @@ generateScenarios <- function(demandL,rgenL){
   total.cols <- d.length + r.length  + 2
   
   
-  scenarios <- data.frame(sn=0,load1=0,load2=0,load3=0,wspeed1=0,wspeed2=0,prob=0)
   scenarios <- as.data.frame(matrix(0,ncol=total.cols))
   colnames(scenarios) <- c("sn",paste("load",1:d.length,sep = ""),paste("wspeed",1:r.length,sep=""),"prob")
  
@@ -175,59 +183,85 @@ generateScenarios <- function(demandL,rgenL){
     
   }
   
-  
   return(scenarios)
+
 }
 
-reduceScenarios <- function(scenarios){
+reduceScenarios0 <- function(scenarios){
+  
+  reducted.scenarios0 <- scenarios %>%  arrange(desc(prob))
+
+  final.scenarios <- reducted.scenarios0[1:30,] %>% mutate(prob = prob/sum(prob))
+  
+  return(final.scenarios)
+  
+}
+
+reduceScenarios <- function(scenarios,meth){
   
   reducted.scenarios0 <- scenarios %>% filter(prob>fivenum(prob)[3]) %>% arrange(desc(prob))
   
-  reducted.scenarios <- head(reducted.scenarios0,200) %>% select(-prob)
-
-  # normalized.reducted <-  apply(reducted.scenarios,2,function(x) (x-min(x)) / (max(x)-min(x)))
-    
+  reducted.scenarios <- head(reducted.scenarios0,500) %>% select(-prob)
+  
   scaled.reducted <- reducted.scenarios %>% scale()
   
+  dist.scenarios <- daisy(scaled.reducted,meth)
   
-  dist.scenarios <- daisy(scaled.reducted,"euclidean")
-
   mat.dist.scenarios <- as.matrix(dist.scenarios)
   
-
-  sil_width <- c(-Inf) 
-  for(i in 2:10){
+  sil_width <- c(-Inf)
+  for(i in 2:13){
     
     pam_fit <- pam(mat.dist.scenarios,
                    diss = TRUE,
-                   k = i)
+                   k = i,nstart = 10)
     
     sil_width[i] <- pam_fit$silinfo$avg.width
     
   }
- 
-  
-  # plot(sil_width,type="l")
-  
-  
+
   noc <- which(sil_width == max(sil_width))
-
   
-  # noc <- min(which(sil_width==min(sil_width,na.rm=T)))
-
-
+  
+ # plot(sil_width,type = "l")
+  
   
   pam_fit <- pam(mat.dist.scenarios,
                  diss = TRUE,
                  k = noc)
   
   # pam_fit$data  <- scaled.reducted
-
- 
-  reducted.scenarios3 <- cbind(reducted.scenarios,prob = head(reducted.scenarios0$prob,200),cluster = as.factor(pam_fit$clustering))
-
   
-  final.scenarios <- reducted.scenarios3[pam_fit$id.med,] %>% mutate(prob = prob/sum(prob))
+  
+  reducted.scenarios3 <- cbind(reducted.scenarios,prob = head(reducted.scenarios0$prob,500),cluster = as.factor(pam_fit$clustering))
+  
+  mean.probs <- reducted.scenarios3 %>% group_by(cluster) %>% summarise(avg = mean(prob)) %>% mutate(n.avg = avg /sum(avg)) %>%  select(n.avg) %>% as.matrix(ncol=1)
+  
+  count.probs <- table(pam_fit$clustering) %>% as.data.frame() %>% mutate(Freq = Freq/sum(Freq)) %>% select(Freq) %>% as.matrix()
+  count.probs <- count.probs %>%  as.numeric() %>% matrix(nrow=noc,ncol=1)
+  
+  final.dist0 <- mean.probs * 1/count.probs
+  
+  final.dist1 <- (final.dist0 / sum(final.dist0)) * 10
+  
+  final.dist1 <- floor(final.dist1)
+  
+  
+  sns <- c()
+  
+  for(rrr in  1:nrow(final.dist1)){
+    if(final.dist1[rrr]>=1){
+      temp.df <- reducted.scenarios3 %>% filter(cluster==rrr)
+      sns <- append(sns,temp.df[1:final.dist1[rrr],"sn"])
+      
+    }
+    
+  }
+
+  indexes <- unique(c(pam_fit$medoids,which(reducted.scenarios3[,"sn"] %in% sns),sample(nrow(reducted.scenarios3),5)))
+  
+  final.scenarios <- reducted.scenarios3[indexes,] %>% mutate(prob = prob/sum(prob))
+  
   
   
   return(final.scenarios)
@@ -237,7 +271,9 @@ reduceScenarios <- function(scenarios){
 calculateB <- function(result,env = parent.env()){
  
   df <- as.data.frame(matrix(ncol = 8))
+  
   colnames(df) <- c("node","step","arrivals","departures","generation","demand","rgen","excessORdeficit")
+  
   gg <- get_solution(result,g[i,k])
   xx <- get_solution(result,x[i,j,k])
   N <- max(get_solution(result,x[i,j,k])$i)
@@ -255,10 +291,9 @@ calculateB <- function(result,env = parent.env()){
                   rnorm(1, actual.params[[y]]$mean, actual.params[[y]]$sd),0)
       
       rr <- ifelse(y %in% rgenSet,
-                   rweibull(1, actual.params[[y]]$shape, actual.params[[y]]$scale),0) 
+                   genFromWind(rweibull(1, actual.params[[y]]$shape, actual.params[[y]]$scale)),0) 
       
       bb <- arrivals + generation + rr - dd - departures
-      
       
       df <-  rbind(df,c(y,p,arrivals,departures,generation,dd,rr,bb))
       
@@ -285,8 +320,9 @@ furtherSimulate <- function(result, result.df) {
   t.df <- xijk %>% group_by(across(all_of(c("i","j")))) %>% 
     summarise(sumTrans= sum(value)) %>% mutate(ij = paste(i,j,sep=""))
 
+
   
-  my_df <- result.df
+ my_df <- result.df
   i <- 4
   j <- 2
   
@@ -318,7 +354,7 @@ furtherSimulate <- function(result, result.df) {
   
   }
   
-  my_df <- my_df %>% mutate(cost = ifelse(excessORdeficit<0,-excessORdeficit*40+genCost,excessORdeficit*(2.5) + genCost))
+  my_df <- my_df %>% mutate(cost = ifelse(excessORdeficit<0,-excessORdeficit*100+genCost, genCost - excessORdeficit*(2.5)))
   
 
  return(my_df)  
@@ -370,7 +406,7 @@ solveOPT3 <- function(final.scenarios,step_size){
   A[lower.tri(A)] <- c(1,0,1,1,0,1,0,1,0,1)
   A[upper.tri(A)] = t(A)[upper.tri(A)]
   C <-  matrix(sapply(diag(nn),function(x)ifelse(x==1,0,line_cap)),ncol = nn) # Capacity of line i-j 
-  G <-  matrix(c(5,0,0,0,2.5),ncol=nn) # Generation capacity of bus i
+  G <-  matrix(c(10,0,0,0,5),ncol=nn) # Generation capacity of bus i
   P <-  matrix(c(20,0,0,0,40),nrow=nn,ncol=1) # Price of generating unit of electricity in bus i
   RHO <- matrix(final.scenarios$prob,nrow = nrow(final.scenarios)) # Scenario Probabilities
   PF <- matrix(sample(runif(20,1,1),step_size),nrow = step_size)  # Further Randomization of demand
@@ -393,7 +429,7 @@ solveOPT3 <- function(final.scenarios,step_size){
     
     # Line binding constraint
   result <- result %>% add_constraint(x[i, j, k] <= r[i,j]* C[i,j] * A[i,j],
-                   i = 1:nn, j = 1:nn, k = 1:t, l = 1:s) %>% 
+                   i = 1:nn, j = 1:nn, k = 1:t) %>% 
     
     # Generation capacity constraint 
     add_constraint(g[i, k] <= G[1,i], 
@@ -403,15 +439,13 @@ solveOPT3 <- function(final.scenarios,step_size){
     result <- result %>% add_constraint(sum_expr(x[i, j, k], j = 1:nn, i!=j) <= b[i,k] + sum_expr(x[j, i, k], j = 1:nn, i!=j) + 
                      g[i, k] + rgen(i, k, l,PF2) - dgen(i, k, l,PF), i = 1:nn, k = 1:t , l = 1:s) %>% 
     
-    add_constraint(b[i, k] <= 10, i = 1:nn, k = 1:t) %>% 
-    
     
     # Objective Function
     
       set_objective(
         sum_expr(
-          RHO[l, 1] * (P[i, 1] * g[i, k] + 40 * b[i, k]) - 
-            2.5 * ( b[i, k] + sum_expr(x[j, i, k], j = 1:nn, i != j) + g[i, k] + rgen(i, k, l, PF2) - dgen(i, k, l, PF) - sum_expr(x[i, j, k], j = 1:nn, i != j) ) ,
+          RHO[l, 1] * (P[i, 1] * g[i, k] + 100 * b[i, k] - 
+            2.5 * (b[i, k] + sum_expr(x[j, i, k], j = 1:nn, i != j) + g[i, k] + rgen(i, k, l, PF2) - dgen(i, k, l, PF) - sum_expr(x[i, j, k], j = 1:nn, i != j)))  ,
               i = 1:nn,
               k = 1:t,
               l = 1:s
@@ -425,5 +459,261 @@ solveOPT3 <- function(final.scenarios,step_size){
     
     sink()
   return(result)
+}
+
+solveOPT4 <- function(final.scenarios,step_size){
+  
+  nn <- 5
+  
+  rgen <- function(i, t, s, PF2) {
+    vin <- 3.5
+    vr <-  14.5
+    vout <- 20
+    pw <- 5
+    rgenSet <- 4:5
+    if (i %in% rgenSet) {
+      d <-
+        as.matrix(final.scenarios[s,] %>%  dplyr::select(wspeed1, wspeed2),
+                  ncol = 2)
+      mm <- t(PF2 %*% d)
+      ws <- as.numeric(mm[i %% 4 + 1, t])
+      if (ws < vin  || ws > vout)
+        return(0)
+      else if (ws >= vin && ws <= vout)
+        return((pw * (ws - vin)) / (vr - vin))
+      else
+        return(pw)
+      
+    } else
+      return(0)
+  }
+  
+  dgen <- function(i, t, s, PF) {
+    demandSet <- 1:3
+    if (i %in% demandSet) {
+      d <-
+        as.matrix(final.scenarios[s, ] %>%  dplyr::select(load1, load2, load3),
+                  ncol = 3)
+      mm <- t(PF %*% d)
+      return(as.numeric(mm[i, t]))
+    } else
+      0
+    
+  }
+  
+  t <- step_size
+  s <- nrow(final.scenarios)
+  line_cap <- 6.0
+  A <-  matrix(0,ncol=nn,nrow=nn) # if there is connection between i and j
+  A[lower.tri(A)] <- c(1,0,1,1,0,1,0,1,0,1)
+  A[upper.tri(A)] = t(A)[upper.tri(A)]
+  C <-  matrix(sapply(diag(nn),function(x)ifelse(x==1,0,line_cap)),ncol = nn) # Capacity of line i-j 
+  G <-  matrix(c(40,0,0,0,10),ncol=nn) # Generation capacity of bus i
+  P <-  matrix(c(30,0,0,0,50),nrow=nn,ncol=1) # Price of generating unit of electricity in bus i
+  RHO <- matrix(final.scenarios$prob,nrow = nrow(final.scenarios)) # Scenario Probabilities
+  PF <- matrix(sample(runif(20,1,1),step_size),nrow = step_size)  # Further Randomization of demand
+  PF2 <- matrix(sample(runif(20,1,1),step_size),nrow = step_size) # Further Randomization of renewable generation
+  
+  result <- MIPModel() %>% 
+    # Amount of electricity transferred from i to j at time k
+    add_variable(x[i, j, k,l], i = 1:nn, j = 1:nn, k = 1:t, l = 1:s ,  type = "continuous",lb = 0) 
+  
+  # Amount of electricity generated at i at time k  
+  result <- result %>% add_variable(g[i, k, l],
+                                    i = 1:nn, k = 1:t, l = 1:s, type = "continuous",lb = 0) 
+  
+  # If line i-j selected to be the path to transfer electricity from i to j
+  result <- result %>% add_variable(r[i, j], 
+                                    i = 1:nn, j = 1:nn, type = "binary") %>% 
+    
+    # Amount of electricity supplied from main grid
+    add_variable(b[i, k, l],  i = 1:nn, k = 1:t, l = 1:s, type = "continuous",lb=0)
+  
+  # Line binding constraint
+  result <- result %>% add_constraint(x[i, j, k, l] <= r[i,j]* C[i,j] * A[i,j],
+                                      i = 1:nn, j = 1:nn, k = 1:t, l=1:s) %>% 
+    
+    # Generation capacity constraint 
+  add_constraint(g[i, k, l] <= G[1,i], 
+                   i = 1:nn , k = 1:t,l=1:s)
+  
+  
+  # Balance constraint
+  result <- result %>% add_constraint(sum_expr(x[i, j, k,l], j = 1:nn, i!=j) <= b[i,k,l] + sum_expr(x[j, i, k,l], j = 1:nn, i!=j) + 
+                                        g[i, k,l] + rgen(i, k, l,PF2) - dgen(i, k, l,PF), i = 1:nn, k = 1:t , l = 1:s)
+    
+
+  # result <-  result %>% add_constraint(sum_expr(x[j, i, k, l], j = 1:nn, i != j) + g[i, k, l] + b[i, k, l] + rgen(i, k, l, PF2) >= dgen(i,k,l,PF), i = 1:nn, k = 1:t, l = 1:s )  
+    
+    # Objective Function
+    
+  result <- result %>%  set_objective(
+      sum_expr(
+        RHO[l, 1] * (P[i, 1] * g[i, k, l] + 100 * b[i, k,l] - 
+                       2.5 * (b[i, k, l] + sum_expr(x[j, i, k,l], j = 1:nn, i != j) + g[i, k, l] + rgen(i, k, l, PF2) - dgen(i, k, l, PF) - sum_expr(x[i, j, k,l], j = 1:nn, i != j)))  ,
+        i = 1:nn,
+        k = 1:t,
+        l = 1:s
+      ),
+      sense = "min"
+    )
+  
+  
+  sink(nullfile())
+  
+  result <- result %>% solve_model(with_ROI("glpk", verbose = TRUE))
+  
+  sink()
+  
+  return(result)
+}
+
+calculateB2 <- function(result,RHO){
+  
+  RHO <- reduced.scenes$prob
+  
+  df <- as.data.frame(matrix(ncol = 8))
+  
+  colnames(df) <- c("node","step","arrivals","departures","generation","demand","rgen","excessORdeficit")
+ 
+  
+  gg <- get_solution(result,g[i,k,l])
+  xx <- get_solution(result,x[i,j,k,l])
+  N <- max(get_solution(result,x[i,j,k,l])$i)
+  P <-  max(get_solution(result,x[i,j,k,l])$k)
+  rij <- get_solution(result,r[i,j]) %>% filter(value>0)
+  prices <- matrix(c(30,0,0,0,50),nrow=N,ncol=1) 
+  
+  
+  
+  for (p in 1:P) {
+    for (y in 1:N) {
+      arrivals <- sum(xx %>% filter(j==y,k==p) %>% group_by(l) %>% summarise(sum = sum(value)) %>% select(sum) %>% as.matrix()  * RHO)
+      departures <- sum(xx %>% filter(i==y,k==p) %>% group_by(l) %>% summarise(sum = sum(value)) %>% select(sum) %>% as.matrix()  * RHO)
+      generation <- sum(gg %>% filter(i==y,k==p) %>% dplyr::select(value) %>% as.matrix() * RHO)
+      
+      dd <-ifelse(y %in% demandSet,
+                  rnorm(1, actual.params[[y]]$mean, actual.params[[y]]$sd),0)
+      
+      rr <- ifelse(y %in% rgenSet,
+                   genFromWind(rweibull(1, actual.params[[y]]$shape, actual.params[[y]]$scale)),0) 
+      
+      bb <- arrivals + generation + rr - dd - departures
+      
+      df <-  rbind(df,c(y,p,arrivals,departures,generation,dd,rr,bb))
+      
+    }
+    
+  }
+  
+  
+  df <- df[-1,] %>% mutate(genCost = generation * prices[node,])
+  
+  return(df)
+}
+
+calculateB3 <- function(result,RHO,dds,rrs){
+  
+  
+  df <- as.data.frame(matrix(ncol = 8))
+  
+  colnames(df) <- c("node","step","arrivals","departures","generation","demand","rgen","excessORdeficit")
+  
+  
+  gg <- get_solution(result,g[i,k,l])
+  xx <- get_solution(result,x[i,j,k,l])
+  N <- max(get_solution(result,x[i,j,k,l])$i)
+  P <-  max(get_solution(result,x[i,j,k,l])$k)
+  rij <- get_solution(result,r[i,j]) %>% filter(value>0)
+  prices <- matrix(c(30,0,0,0,50),nrow=N,ncol=1) 
+  
+  
+  for (p in 1:P) {
+    for (y in 1:N) {
+      arrivals <- sum(xx %>% filter(j==y,k==p) %>% group_by(l) %>% summarise(sum = sum(value)) %>% select(sum) %>% as.matrix()  * RHO)
+      departures <- sum(xx %>% filter(i==y,k==p) %>% group_by(l) %>% summarise(sum = sum(value)) %>% select(sum) %>% as.matrix()  * RHO)
+      generation <- sum(gg %>% filter(i==y,k==p) %>% dplyr::select(value) %>% as.matrix() * RHO)
+      
+      dd <- dds[y]
+      
+      rr <- rrs[y]
+      
+      bb <- arrivals + generation + rr - dd - departures
+      
+      df <-  rbind(df,c(y,p,arrivals,departures,generation,dd,rr,bb))
+      
+    }
+    
+  }
+  
+  
+  df <- df[-1,] %>% mutate(genCost = generation * prices[node,])
+  
+  return(df)
+}
+
+furtherSimulate2 <- function(result, result.df,RHO) {
+# RHO <- reduced.scenes$prob
+  
+  defs <-
+    as.numeric(unlist(result.df %>% filter(excessORdeficit < 0) %>% dplyr::select(node)))
+  excs <-
+    as.numeric(unlist(result.df %>% filter(excessORdeficit > 0) %>% dplyr::select(node)))
+  
+  xijk <- get_solution(result,x[i,j,k,l]) %>% 
+    filter(value>0) %>% dplyr::select(-variable)
+  
+  t.df <- xijk %>% mutate(vv = RHO[l] * value ) %>% group_by(across(all_of(c("i","j")))) %>% 
+    summarise(sumTrans = sum(vv)) %>% mutate(ij = paste(i,j,sep=""))
+  
+  
+  my_df <- result.df
+  
+
+  # for (i in excs) {
+  #   for (j in defs) {
+  #     line <- paste(i,j,sep="")
+  #     if(line %in% t.df$ij){
+  #       row.n <- which(t.df$ij == line)
+  #       if(as.logical(t.df[row.n,"sumTrans"] < 6)){
+  #         nj.df <- which(my_df$node==j)
+  #         ni.df <- which(my_df$node==i)
+  #         possible_transfers <- c()
+  #         possible_transfers[1] <- -my_df[nj.df,"excessORdeficit"]
+  #         possible_transfers[2] <- as.numeric(6 - t.df[row.n,"sumTrans"])
+  #         possible_transfers[3] <- my_df[ni.df,"excessORdeficit"]
+  #         final_transfer <- min(possible_transfers)
+  # 
+  #         my_df[nj.df,"arrivals"] = my_df[nj.df,"arrivals"] + final_transfer
+  #         my_df[nj.df,"excessORdeficit"] = my_df[nj.df,"excessORdeficit"] + final_transfer
+  # 
+  #         my_df[ni.df,"departures"] = my_df[ni.df,"departures"] + final_transfer
+  #         my_df[ni.df,"excessORdeficit"] = my_df[ni.df,"excessORdeficit"] - final_transfer
+  # 
+  #       }
+  # 
+  #     }
+  # 
+  #   }
+  # 
+  # }
+  
+  my_df <- my_df %>% mutate(cost = ifelse(excessORdeficit<0,-excessORdeficit*100+genCost, genCost - excessORdeficit*(2.5) ))
+  
+  
+  return(my_df)  
+}
+
+genFromWind <- function(ws){
+  vin <- 3.5
+  vr <-  14.5
+  vout <- 20
+  pw <- 5
+  if (ws < vin  || ws > vout)
+    return(0)
+  else if (ws >= vin && ws <= vout)
+    return((pw * (ws - vin)) / (vr - vin))
+  else
+    return(pw)
 }
 
