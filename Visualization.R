@@ -1,6 +1,8 @@
 library(ggplot2)
 library(ggthemes)
 library(ggsci)
+library(showtext)
+library(dplyr)
 
 
 
@@ -9,10 +11,10 @@ library(ggsci)
 # result %>% get_solution(b[i,k])
 
 
- # write.csv(f.result.final2,"C:\\Users\\Administrator\\Desktop\\Datas\\newSetup4_10_48.csv", row.names = FALSE) 
+ # write.csv(f.result.final2,"C:\\Users\\Administrator\\Desktop\\Datas\\newSetup_longRun.csv", row.names = FALSE)
 
 
-f.result.final <-  read.csv("C:\\Users\\Administrator\\Desktop\\Datas\\newSetup3_5_100_24.csv") ### Used, created plots with
+# f.result.final <-  read.csv("C:\\Users\\Administrator\\Desktop\\Datas\\newSetup3_5_100_24.csv") ### Used, created plots with
 
 
 
@@ -22,7 +24,7 @@ dist.names <- as_labeller(
 
 
 
-f.result.final2 <- f.result.final %>% mutate(optimization = as.numeric(optimization),simulation = as.numeric(simulation),iter = as.numeric(iter)) %>% 
+f.result.final2 <- f.result.final[-1,] %>% mutate(optimization = as.numeric(optimization),simulation = as.numeric(simulation),iter = as.numeric(iter)) %>% 
   mutate(p.diff =  ((simulation-optimization) / optimization) * 100, lat = factor(lat,levels= c(as.character(unique(f.result.final$lat)))))
 
 
@@ -30,62 +32,72 @@ f.result.final2 <- f.result.final %>% mutate(optimization = as.numeric(optimizat
 
 zz <- f.result.final2 %>% group_by(iter) %>% summarise(Meaniter = mean(simulation),SDiter = sd(simulation))
 f.result.final3 <- f.result.final2 
-f.result.final3$meanIter <- rep(zz$Meaniter,each=length(c(as.character(unique(f.result.final$lat)))),2) 
-f.result.final3$sdIter <- rep(zz$SDiter,each=length(c(as.character(unique(f.result.final$lat)))),2)
+f.result.final3$meanIter <- rep(zz$Meaniter,each=length(c(as.character(unique(f.result.final2$lat)))),2) 
+f.result.final3$sdIter <- rep(zz$SDiter,each=length(c(as.character(unique(f.result.final2$lat)))),2)
 f.result.final3 <-  f.result.final3 %>% mutate(normPerf = (simulation-meanIter)/sdIter)
 
-font_add_google("Montserrat", "Montserrat")
-font_add_google("Roboto", "Roboto")
-font_add("Palatino", "palab.ttf")
-showtext_auto()
-showtext_opts(dpi = 300)
-showtext_auto(enable = TRUE)
-myFont1 <- "Montserrat"
-myFont2 <- "Roboto"
-myFont3 <- "Palatino"
+# font_add_google("Montserrat", "Montserrat")
+# font_add_google("Roboto", "Roboto")
+# font_add("Palatino", "palab.ttf")
+# showtext_auto()
+# showtext_opts(dpi = 300)
+# showtext_auto(enable = TRUE)
+# myFont1 <- "Montserrat"
+# myFont2 <- "Roboto"
+# myFont3 <- "Palatino"
 
 figure1 <- ggplot(f.result.final3,aes(x=lat,y=normPerf,color=lat)) + geom_boxplot() + ylim(c(-2.5,2.5)) +
   facet_wrap(~distmethod,scales = "free", labeller = dist.names) + theme_classic() + scale_color_aaas(name = "Latency",labels= c("High","Moderate","Low")) + 
-  ylab("Normalized Cost") + theme(strip.text = element_text( face= "bold",size = unit(14,"pt"),family = myFont3),
-                                  legend.text = element_text(face="bold",family=myFont3),
-                                  legend.title = element_text(face="bold",family=myFont3),
-                                  axis.title = element_text(face="bold",family= myFont3,size = unit(14,"pt")),
-                                  axis.text = element_text(face="bold",family=myFont3,size = unit(12,"pt")),
-                                  legend.position = c(0.9,0.85)) +scale_x_discrete(labels=c("High","Moderate","Low")) + xlab("Latency")
+  ylab("Normalized Cost") + theme(strip.text = element_text( face= "bold",size = unit(16,"pt"),family = myFont3),
+                                  legend.text = element_text(face="bold",family=myFont3,size=unit(12,"pt")),
+                                  legend.title = element_text(face="bold",family=myFont3,size=unit(16,"pt")),
+                                  axis.title = element_text(face="bold",family= myFont3,size = unit(16,"pt")),
+                                  axis.text = element_text(face="bold",family=myFont3,size = unit(14,"pt"),colour = "black"),
+                                  legend.position = "none",legend.key.size=unit(0.75,"cm"),
+                                  legend.key = element_rect(colour = NA, fill = NA),
+                                  legend.key.width = unit(0.25,"cm"),
+                                  legend.key.height = unit(0.25,"cm")) +scale_x_discrete(labels=c("High","Moderate","Low")) + xlab("Latency") 
 
 
 figure1
 
-# 
-# ggsave(figure1, filename = "C:\\Users\\Administrator\\Dropbox\\BookChapter-vol3\\Figures\\figure1_cairo.png", dpi = 300, type ="cairo",
-#        width =8, height = 6, units = "in")
+ 
+
+ggsave(figure1, filename = "C:\\Users\\Administrator\\Dropbox\\BookChapter-vol3\\Figures\\newFigures\\figure1_LongSetup.png", dpi = 300, type ="cairo",
+         width =8, height = 6, units = "in")
 dev.off()
 
-showtext_opts(dpi = 300)
+rep(rep(1:96, 3), 2)
+
 figure2 <- ggplot(f.result.final3,
        aes(
-         x = rep(rep(1:24, 3), 2),
+         x = rep(rep(1:96, 3), 2),
          y = normPerf,
          color = lat,
          linetype = lat
-       )) + theme_minimal() + geom_smooth(method="gam",formula = y~poly(x,6), se = FALSE) + theme_classic() + 
-  # facet_wrap(~distmethod,labeller = dist.names) +od="gam",formula = y~poly(x,5), se = FALSE) + theme_classic() + facet_wrap(~distmethod,labeller = dist.names)+
+       )) + theme_minimal() + geom_smooth(method="lm",formula = y~poly(x,5), se = FALSE) + theme_classic() + 
   theme(strip.text = element_text( face= "bold",size = unit(14,"pt"),family = myFont3),
-        legend.text = element_text(face="bold",family=myFont3),
-        legend.title = element_text(face="bold",family=myFont3),
-        axis.title = element_text(face="bold",family= myFont3,size = unit(14,"pt")),
-        axis.text = element_text(face="bold",family=myFont3,size = unit(12,"pt")),
-        legend.position = "top",
-        legend.key = element_rect(colour ="transparent", fill = "white")) + xlab("Time Steps") +
+        legend.text = element_text(size = unit(16,"pt"),face="bold",family=myFont3),
+        legend.title = element_text(face="bold",family=myFont3,size=unit(16,"pt")),
+        axis.title = element_text(face="bold",family= myFont3,size = unit(16,"pt")),
+        axis.text = element_text(face="bold",family=myFont3,size = unit(14,"pt"),colour = "black"),
+        legend.position = c(0.8,0.8),
+        legend.key = element_rect(colour ="transparent", fill = "white"),
+        legend.key.size = unit(1.5,"cm"), legend.key.height  = unit(1,"cm") ) +
+        xlab("Time Steps") +
   labs(color = NULL, linetype = NULL, shape = NULL) + 
-  xlab("Time Steps") + ylab("Normalized Objective Value") + 
-  scale_linetype_discrete(name="Latency", labels=c("High","Moderate","Low")) + scale_color_aaas(name="Latency", labels=c("High","Moderate","Low")) 
+  xlab("Time Steps") + ylab("Normalized Cost") + 
+  scale_linetype_discrete(name="Latency", labels=c("High","Moderate","Low")) + 
+  scale_color_aaas(name="Latency", labels=c("High","Moderate","Low"))  +guides(linetype = guide_legend(override.aes = list(size=2)))
 
 figure2
-ggsave(figure2, filename = "C:\\Users\\Administrator\\Dropbox\\BookChapter-vol3\\Figures\\figure2_cairo.png", dpi = 300, type ="cairo",
+
+
+ggsave(figure2, filename = "C:\\Users\\Administrator\\Dropbox\\BookChapter-vol3\\Figures\\newFigures\\figure2_cairo_longsetup.png", dpi = 300, type ="cairo",
         width =8, height = 6, units = "in")
 
 
+dev.off()
 #### Plots for manhattan distance
 
 
@@ -98,24 +110,28 @@ f.result.final3 <-  f.result.final3 %>% mutate(normPerf = (simulation-meanIter)/
   
 ggplot(f.result.final3,aes(x=iter,y=normPerf,fill=lat)) + geom_boxplot() + ylim(c(-3,3))
 
-figure3 <- ggplot(f.result.final3,aes(x=lat,y=p.diff,fill = lat)) + geom_boxplot(outlier.size = -1,alpha= 0.65) +
+figure3 <- ggplot(f.result.final3,aes(x=lat,y=p.diff,fill = lat)) + 
+  theme_classic() + 
+  geom_boxplot(outlier.size = -1,alpha= 0.65) +
   scale_fill_aaas(name="Latency") + ylim(c(min(f.result.final3$p.diff),80)) + ylab("( % )Deviation") + 
   guides(fill="none") + scale_x_discrete(name="Latency", labels = c("High","Moderate","Low"))  +
-  theme(axis.title.y = element_text(face = "bold",margin = margin(t = 1,r = 5, b = 1,l =1)),
-        strip.text = element_text( face= "bold",size = unit(14,"pt"),family = myFont3),
-       legend.text = element_text(face="bold",family=myFont3),
-       legend.title = element_text(face="bold",family=myFont3),
-       axis.title = element_text(face="bold",family= myFont3,size = unit(14,"pt")),
-       axis.text = element_text(face="bold",family=myFont3,size = unit(12,"pt")),
-       legend.position = c(0.9,0.85)) + xlab("Latency")
+  theme(strip.text = element_text( face= "bold",size = unit(14,"pt"),family = myFont3),
+        legend.text = element_text(size = unit(16,"pt"),face="bold",family=myFont3),
+        legend.title = element_text(face="bold",family=myFont3,size=unit(16,"pt")),
+        axis.title = element_text(face="bold",family= myFont3,size = unit(16,"pt")),
+        axis.text = element_text(face="bold",family=myFont3,size = unit(14,"pt"),colour = "black"),
+        legend.position = "none",
+        legend.key = element_rect(colour ="transparent", fill = "white"),
+        legend.key.size = unit(1.5,"cm"), legend.key.height  = unit(1,"cm") ) + xlab("Latency") 
 
 
 
+figure3
 
-ggsave(figure3, filename = "C:\\Users\\Administrator\\Dropbox\\BookChapter-vol3\\Figures\\figure3_cairo.png", dpi = 300, type ="cairo",
-       width =4, height = 3, units = "in")
+ggsave(figure3, filename = "C:\\Users\\Administrator\\Dropbox\\BookChapter-vol3\\Figures\\newFigures\\figure3_cairo_longSetup.png", dpi = 300, type ="cairo",
+       width =6, height = 4.5, units = "in")
 
-
+dev.off()
 
 #### Plots for euclidean distance
 
@@ -142,7 +158,7 @@ grouped.df <- f.result.final2 %>% filter(distmethod == "manhattan") %>%  group_b
 
 
 ggplot(grouped.df,aes(x=iter,y=meanSim,fill=lat)) + geom_boxplot()   
-  
+  ?glpk
 
 grouped.df <- f.result.final2 %>%  group_by(iter,lat,distmethod) %>% summarise(meanSim = mean(simulation),meanDif = mean(p.diff),meanOpt= mean(optimization)) %>% 
   as.data.frame()

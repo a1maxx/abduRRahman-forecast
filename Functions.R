@@ -214,7 +214,7 @@ reduceScenarios <- function(scenarios,meth){
     
     pam_fit <- pam(mat.dist.scenarios,
                    diss = TRUE,
-                   k = i,nstart = 10)
+                   k = i,nstart = 3)
     
     sil_width[i] <- pam_fit$silinfo$avg.width
     

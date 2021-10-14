@@ -19,7 +19,7 @@ rgenSet <- 4:5
 step_size <- 1
 
 
-maxIter <- 192
+maxIter <- 96
 f.result.final <-  as.data.frame(matrix(ncol = 5))
 colnames(f.result.final) <- c("iter","optimization","simulation","lat","distmethod")
 
@@ -31,7 +31,7 @@ for(meth in meths){
     
     ms.n <- ms * runif(1,1,2)
     sds.n <- sds * runif(1,1,2)
-    shapes.n <- shapes 
+    shapes.n <- shapes * runif(1,0.9,1.1)
     scales.n <- scales 
     assignActualParams(ms.n,sds.n,shapes.n,scales.n)
     
